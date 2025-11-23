@@ -11,25 +11,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// homepage testing
-app.get('/', (req, res) => {
-    res.send(`
-        <h2>Login Page (Simulation)</h2>
-        <p>Forgot your password? <a href="/forgot-password-form">Click here</a></p>
-    `);
-});
-
-// FORGOT PASSWORD FORM
-app.get('/forgot-password-form', (req, res) => {
-    res.send(`
-        <h2>Forgot Password</h2>
-        <form action="/forgot-password" method="POST">
-            <label>Enter your email:</label>
-            <input type="email" name="email" required placeholder="test@example.com" />
-            <button type="submit">Send Reset Link</button>
-        </form>
-    `);
-});
 
 // POST forgot password
 app.post('/forgot-password', async (req, res) => {
@@ -76,36 +57,27 @@ app.post('/forgot-password', async (req, res) => {
 
 // verify token and get method  
 app.get('/reset-password', async (req, res) => {
-    const { token } = req.query; // Get token from URL
+    const { token } = req.query; 
 
     try {
-        // hash the incoming token to match the database
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         
-        // check validity
         const tokenResult = await db.query(
             'SELECT * FROM password_reset_tokens WHERE token_hash = $1 AND is_used = false AND expires_at > NOW()',
             [tokenHash]
         );
 
         if (tokenResult.rows.length === 0) {
-            return res.send('<h1>Invalid or expired link.</h1>');
+            // RETURN JSON ERROR
+            return res.status(400).json({ valid: false, message: 'Invalid or expired link.' });
         }
 
-        // Show the form (with hidden token input)
-        res.send(`
-            <h2>Set New Password</h2>
-            <form action="/reset-password" method="POST">
-                <input type="hidden" name="token" value="${token}" />
-                <label>New Password:</label>
-                <input type="password" name="password" required />
-                <button type="submit">Reset Password</button>
-            </form>
-        `);
+        // RETURN JSON SUCCESS 
+        res.json({ valid: true, message: 'Token is valid.' });
 
     } catch (err) {
         console.error(err);
-        res.send('Error verifying token');
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -116,36 +88,38 @@ app.post('/reset-password', async (req, res) => {
     try {
         const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         
-        // validate token again
         const tokenResult = await db.query(
             'SELECT * FROM password_reset_tokens WHERE token_hash = $1 AND is_used = false AND expires_at > NOW()',
             [tokenHash]
         );
 
         if (tokenResult.rows.length === 0) {
-            return res.send('Invalid token.');
+            return res.status(400).json({ message: 'Invalid token.' });
         }
 
         const dbToken = tokenResult.rows[0];
 
-        // 2. Hash new pw
+        // Hash new pw
         const passwordHash = await bcrypt.hash(password, 10);
 
-        // 3. update pw in db
+        // Update pw in db
         await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, dbToken.user_id]);
 
-        // 4. token marked as used
+        // Token marked as used
         await db.query('UPDATE password_reset_tokens SET is_used = true WHERE id = $1', [dbToken.id]);
 
-        res.send('<h1>Success! Password reset. You can now login.</h1>');
+        // SEND JSON SUCCESS
+        res.json({ success: true, message: 'Password successfully reset.' });
 
     } catch (err) {
         console.error(err);
-        res.send('Error updating password');
+        res.status(500).json({ message: 'Error updating password' });
     }
 });
 
-// Start Server
-app.listen(3000, () => {
-    console.log('Server running on http://localhost:3000');
+// port 3000 eller hvad end render giver
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
